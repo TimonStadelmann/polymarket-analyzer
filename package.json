@@ -1,0 +1,22 @@
+{
+	"name": "polymarket-contrarian-finder",
+	"version": "1.0.0",
+	"private": true,
+	"workspaces": [
+		"apps/*"
+	],
+	"scripts": {
+		"dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+		"dev:web": "npm run dev -w apps/web",
+		"dev:api": "npm run dev -w apps/api",
+		"build": "npm run build:api && npm run build:web",
+		"build:web": "npm run build -w apps/web",
+		"build:api": "npm run build -w apps/api",
+		"format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md,css}\"",
+		"format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md,css}\""
+	},
+	"devDependencies": {
+		"concurrently": "^9.2.1",
+		"prettier": "^3.4.2"
+	}
+}
