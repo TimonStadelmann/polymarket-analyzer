@@ -346,14 +346,6 @@ Tested on database with 150 events, 400 markets, 18K trades, 7K users:
 - ✅ **Visualization**: Tables, cards, network graphs, flow diagrams
 - ✅ **Data source citation**: Polymarket APIs properly referenced
 
-## License
-
-MIT
-
-## Author
-
-Built by Timon Stadelmann for Knowledge-Based Systems (FHV, December 2025)
-
 ## References
 
 - Polymarket. (2025). _Prediction Market Platform_. https://polymarket.com/
