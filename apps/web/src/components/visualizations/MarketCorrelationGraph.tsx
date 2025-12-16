@@ -76,8 +76,8 @@ export function MarketCorrelationGraph() {
 			id,
 			type: 'default',
 			position: {
-				x: (index % 10) * 200,
-				y: Math.floor(index / 10) * 150,
+				x: Math.cos((index / marketMap.size) * 2 * Math.PI) * 350 + 450,
+				y: Math.sin((index / marketMap.size) * 2 * Math.PI) * 350 + 350,
 			},
 			data: {
 				label: market.question.substring(0, 40) + '...',
@@ -98,7 +98,7 @@ export function MarketCorrelationGraph() {
 			target: link.market2.id,
 			label: `${link.shared_traders} traders`,
 			style: {
-				strokeWidth: Math.min(8, link.shared_traders / 2),
+				strokeWidth: Math.min(25, 2 + (link.shared_traders - 10) * 2),
 				stroke: '#94a3b8',
 			},
 		}));

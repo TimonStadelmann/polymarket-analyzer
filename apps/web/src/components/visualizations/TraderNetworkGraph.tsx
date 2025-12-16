@@ -73,6 +73,7 @@ export function TraderNetworkGraph() {
 			},
 			data: {
 				label: trader.name || trader.pseudonym || address.substring(0, 8) + '...',
+				address: address,
 			},
 			style: {
 				width: Math.min(150, 50 + trader.trades * 2),
@@ -85,6 +86,7 @@ export function TraderNetworkGraph() {
 				justifyContent: 'center',
 				fontSize: '12px',
 				fontWeight: 'bold',
+				cursor: 'pointer',
 			},
 		}));
 
@@ -95,7 +97,7 @@ export function TraderNetworkGraph() {
 			label: `${link.shared_markets} markets`,
 			animated: true,
 			style: {
-				strokeWidth: Math.min(10, link.shared_markets),
+				strokeWidth: Math.min(20, 2 + (link.shared_markets - 3) * 2.5),
 				stroke: '#6366f1',
 			},
 		}));
@@ -181,6 +183,15 @@ export function TraderNetworkGraph() {
 							edges={edges}
 							onNodesChange={onNodesChange}
 							onEdgesChange={onEdgesChange}
+							onNodeClick={(_event, node) => {
+								const address = node.data.address;
+								if (address) {
+									window.open(
+										`https://polymarket.com/profile/@${address}`,
+										'_blank'
+									);
+								}
+							}}
 							fitView
 						>
 							<Background />

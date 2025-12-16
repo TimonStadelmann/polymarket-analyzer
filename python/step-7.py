@@ -7,32 +7,11 @@ print('Importing Data to Neo4j')
 print('=' * 70)
 print()
 
-# Prepare wallet data (contracts + users from trades).
-print('[0/10] Preparing wallet data...')
-all_wallets = {}
+# Prepare user data from trades with Polymarket profile data.
+print('[0/10] Preparing user data...')
+user_profiles = {}
 null_address = '0x0000000000000000000000000000000000000000'
 
-# Add Polymarket contract wallets.
-for address, label in contracts.items():
-    all_wallets[address] = {
-        'address': address,
-        'role': 'contract',
-        'label': label,
-        'balance_matic': '0',
-        'is_contract': True,
-    }
-
-# Add USDC token contract.
-all_wallets[usdc_address] = {
-    'address': usdc_address,
-    'role': 'token',
-    'label': 'USDC',
-    'balance_matic': '0',
-    'is_contract': True,
-}
-
-# Extract users from trades with Polymarket profile data.
-user_profiles = {}
 for trade in all_token_transfers:
     trader_addr = trade.get('from')
     if not trader_addr or trader_addr == null_address:
@@ -47,16 +26,13 @@ for trade in all_token_transfers:
             'bio': trade.get('user_bio', ''),
             'profile_image': trade.get('user_profile_image', ''),
             'profile_image_optimized': trade.get('user_profile_image_optimized', ''),
-            'balance_matic': '0',
-            'is_contract': False,
         }
 
-all_wallets.update(user_profiles)
-print(f'  ✓ Prepared {len(all_wallets)} wallets (contracts: {len(contracts) + 1}, users: {len(user_profiles)})\n')
+print(f'  ✓ Prepared {len(user_profiles)} users\n')
 
 def create_schema(driver):
     """Create constraints and indexes."""
-    print('[1/10] Creating schema...')
+    print('[1/9] Creating schema...')
     
     statements = [
         # Constraints.
@@ -65,7 +41,6 @@ def create_schema(driver):
         'CREATE CONSTRAINT market_condition_id IF NOT EXISTS FOR (m:Market) REQUIRE m.condition_id IS UNIQUE',
         'CREATE CONSTRAINT outcome_id IF NOT EXISTS FOR (o:Outcome) REQUIRE (o.condition_id, o.outcome_index) IS UNIQUE',
         'CREATE CONSTRAINT trade_hash IF NOT EXISTS FOR (t:Trade) REQUIRE t.transaction_hash IS UNIQUE',
-        'CREATE CONSTRAINT contract_address IF NOT EXISTS FOR (c:Contract) REQUIRE c.address IS UNIQUE',
         
         # Indexes.
         'CREATE INDEX event_category IF NOT EXISTS FOR (e:Event) ON (e.category)',
@@ -87,14 +62,14 @@ def create_schema(driver):
 
 def clear_database(driver):
     """Clear all data."""
-    print('[2/10] Clearing database...')
+    print('[2/9] Clearing database...')
     with driver.session() as session:
         session.run('MATCH (n) DETACH DELETE n')
     print('  ✓ Database cleared\n')
 
 def import_events(driver, events):
     """Import Event nodes in batch."""
-    print('[3/10] Importing events...')
+    print('[3/9] Importing events...')
     
     # Prepare data.
     event_data = []
@@ -147,7 +122,7 @@ def import_events(driver, events):
 
 def import_markets(driver, events):
     """Import Market nodes in batches."""
-    print('[4/10] Importing markets...')
+    print('[4/9] Importing markets...')
     
     # Prepare market data.
     market_data = []
@@ -264,7 +239,7 @@ def import_markets(driver, events):
 
 def import_outcomes(driver, events):
     """Import Outcome nodes in batches."""
-    print('[5/10] Importing outcomes...')
+    print('[5/9] Importing outcomes...')
     
     # Prepare outcome data.
     outcome_data = []
@@ -314,39 +289,16 @@ def import_outcomes(driver, events):
     
     print(f'  ✓ Imported {len(outcome_data)} outcomes\n')
 
-def import_contracts(driver, wallets):
-    """Import Contract nodes."""
-    print('[6/10] Importing contracts...')
-    
-    contracts = [w for w in wallets.values() if w.get('role') == 'contract']
-    
-    with driver.session() as session:
-        for contract in tqdm(contracts, desc='  Contracts', unit='contract'):
-            session.run('''
-                MERGE (c:Contract {address: $address})
-                SET c.label = $label,
-                    c.balance_matic = toFloat($balance_matic)
-            ''', {
-                'address': contract['address'],
-                'label': contract.get('label', 'Unknown'),
-                'balance_matic': contract.get('balance_matic', '0'),
-            })
-    
-    print(f'  ✓ Imported {len(contracts)} contracts\n')
-
-def import_users(driver, wallets):
+def import_users(driver, users):
     """Import User nodes with Polymarket profile data."""
-    print('[7/10] Importing users...')
-    
-    users = [w for w in wallets.values() if w.get('role') == 'trader']
+    print('[6/9] Importing users...')
     
     # Prepare user data.
     user_data = []
-    for user in users:
+    for user in users.values():
         user_data.append({
             'address': user['address'],
             'role': 'trader',
-            'balance_matic': user.get('balance_matic', '0'),
             'name': user.get('name', ''),
             'pseudonym': user.get('pseudonym', ''),
             'bio': user.get('bio', ''),
@@ -360,8 +312,6 @@ def import_users(driver, wallets):
             UNWIND $users as user
             MERGE (u:User {address: user.address})
             SET u.role = user.role,
-                u.balance_matic = toFloat(user.balance_matic),
-                u.balance_usdc = 0.0,
                 u.name = user.name,
                 u.pseudonym = user.pseudonym,
                 u.bio = user.bio,
@@ -373,7 +323,7 @@ def import_users(driver, wallets):
 
 def import_trades(driver, trades):
     """Import Trade nodes in batches for speed."""
-    print('[8/10] Importing trades...')
+    print('[7/9] Importing trades...')
     
     batch_size = 500  # Process 500 trades at a time
     total_batches = (len(trades) + batch_size - 1) // batch_size
@@ -469,7 +419,7 @@ def import_trades(driver, trades):
 
 def create_group_market_relationships(driver, events):
     """Link markets in the same group."""
-    print('[9/10] Creating group market relationships...')
+    print('[8/9] Creating group market relationships...')
     
     count = 0
     
@@ -496,7 +446,7 @@ def create_group_market_relationships(driver, events):
 
 def create_holdings(driver):
     """Calculate user holdings from BUY trades."""
-    print('[10/10] Creating holdings...')
+    print('[9/9] Creating holdings...')
     
     with driver.session() as session:
         result = session.run('''
@@ -521,8 +471,7 @@ clear_database(neo4j_driver)
 import_events(neo4j_driver, latest_events)
 import_markets(neo4j_driver, latest_events)
 import_outcomes(neo4j_driver, latest_events)
-import_contracts(neo4j_driver, all_wallets)
-import_users(neo4j_driver, all_wallets)
+import_users(neo4j_driver, user_profiles)
 import_trades(neo4j_driver, all_token_transfers)
 create_group_market_relationships(neo4j_driver, latest_events)
 create_holdings(neo4j_driver)
@@ -536,5 +485,5 @@ print(f'  • Events: {len(latest_events)}')
 print(f'  • Markets: {total_markets}')
 print(f'  • Outcomes: {len(all_outcomes)}')
 print(f'  • Trades: {len(all_token_transfers)}')
-print(f'  • Users: {len([w for w in all_wallets.values() if w.get("role") == "trader"])}')
+print(f'  • Users: {len(user_profiles)}')
 print('=' * 70)

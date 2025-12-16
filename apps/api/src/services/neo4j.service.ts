@@ -232,31 +232,52 @@ export async function getTopContrarianTraders(
 }
 
 // Query 5: Trader Network - Find traders who trade on similar markets
-export async function getTraderNetwork(minSharedMarkets: number = 2, limit: number = 50) {
+export async function getTraderNetwork(minSharedMarkets: number = 3, limit: number = 50) {
 	const driver = initNeo4jDriver();
 	const session = driver.session();
 
 	try {
 		const result = await session.run(
 			`
-  MATCH (u1:User)-[:PLACED_TRADE]->(t1:Trade)-[:ON_MARKET]->(m:Market)
-  MATCH (u2:User)-[:PLACED_TRADE]->(t2:Trade)-[:ON_MARKET]->(m)
-  WHERE u1.address < u2.address
-  WITH u1, u2, count(DISTINCT m) as shared_markets, 
-       count(DISTINCT t1) as u1_trades,
-       count(DISTINCT t2) as u2_trades
+  // Start with top 10 most-traded markets only
+  MATCH (m:Market)<-[:ON_MARKET]-(:Trade)
+  WITH m, count(*) as trade_count
+  ORDER BY trade_count DESC
+  LIMIT 10
+  
+  // Find traders active on these markets
+  MATCH (m)<-[:ON_MARKET]-(t1:Trade)<-[:PLACED_TRADE]-(u1:User)
+  WITH u1, collect(DISTINCT m) as u1_markets
+  WHERE size(u1_markets) >= $minSharedMarkets
+  
+  // Only keep top 50 most active traders
+  WITH u1, u1_markets, count{(u1)-[:PLACED_TRADE]->()} as u1_trade_count
+  ORDER BY u1_trade_count DESC
+  LIMIT 50
+  
+  // Now find connections between these 50 traders
+  MATCH (u2:User)-[:PLACED_TRADE]->(:Trade)-[:ON_MARKET]->(m2:Market)
+  WHERE u1.address < u2.address AND m2 IN u1_markets
+  WITH u1, u2, u1_markets, 
+       collect(DISTINCT m2) as u2_markets,
+       count{(u1)-[:PLACED_TRADE]->()} as u1_trades,
+       count{(u2)-[:PLACED_TRADE]->()} as u2_trades
+  
+  WITH u1, u2, u1_trades, u2_trades,
+       size([m IN u1_markets WHERE m IN u2_markets]) as shared_markets
   WHERE shared_markets >= $minSharedMarkets
+  
   RETURN u1.address as trader1_address,
          u1.name as trader1_name,
          u1.pseudonym as trader1_pseudonym,
          u1.profile_image as trader1_image,
+         u1_trades,
          u2.address as trader2_address,
          u2.name as trader2_name,
          u2.pseudonym as trader2_pseudonym,
          u2.profile_image as trader2_image,
-         shared_markets,
-         u1_trades,
-         u2_trades
+         u2_trades,
+         shared_markets
   ORDER BY shared_markets DESC
   LIMIT $limit
   `,
@@ -292,28 +313,40 @@ export async function getTraderNetwork(minSharedMarkets: number = 2, limit: numb
 }
 
 // Query 6: Market Correlation - Find markets that share traders
-export async function getMarketCorrelation(minSharedTraders: number = 3, limit: number = 50) {
+export async function getMarketCorrelation(minSharedTraders: number = 10, limit: number = 30) {
 	const driver = initNeo4jDriver();
 	const session = driver.session();
 
 	try {
 		const result = await session.run(
 			`
-  MATCH (m1:Market)<-[:ON_MARKET]-(t1:Trade)<-[:PLACED_TRADE]-(u:User)
-  MATCH (u)-[:PLACED_TRADE]->(t2:Trade)-[:ON_MARKET]->(m2:Market)
-  WHERE id(m1) < id(m2)
-  WITH m1, m2, count(DISTINCT u) as shared_traders,
-       [(m1)-[:PART_OF_EVENT]->(e1:Event) | e1.category][0] as cat1,
-       [(m2)-[:PART_OF_EVENT]->(e2:Event) | e2.category][0] as cat2
+  // Find active traders with multiple market participation
+  MATCH (u:User)-[:PLACED_TRADE]->(:Trade)-[:ON_MARKET]->(m:Market)
+  WHERE m.resolved = true
+  WITH u, count(DISTINCT m) as market_count
+  WHERE market_count >= 2
+  ORDER BY market_count DESC
+  LIMIT 30
+  
+  // Find market pairs these traders participate in
+  MATCH (u)-[:PLACED_TRADE]->(:Trade)-[:ON_MARKET]->(m1:Market)
+  MATCH (u)-[:PLACED_TRADE]->(:Trade)-[:ON_MARKET]->(m2:Market)
+  WHERE id(m1) < id(m2) AND m1.resolved = true AND m2.resolved = true
+  
+  WITH m1, m2, count(DISTINCT u) as shared_traders
   WHERE shared_traders >= $minSharedTraders
+  
+  MATCH (m1)-[:PART_OF_EVENT]->(e1:Event)
+  MATCH (m2)-[:PART_OF_EVENT]->(e2:Event)
+  
   RETURN m1.condition_id as market1_id,
          m1.question as market1_question,
          m1.slug as market1_slug,
-         cat1 as market1_category,
+         e1.category as market1_category,
          m2.condition_id as market2_id,
          m2.question as market2_question,
          m2.slug as market2_slug,
-         cat2 as market2_category,
+         e2.category as market2_category,
          shared_traders
   ORDER BY shared_traders DESC
   LIMIT $limit
@@ -355,7 +388,15 @@ export async function getCategoryFlow() {
 	try {
 		const result = await session.run(
 			`
-  MATCH (u:User)-[:PLACED_TRADE]->(t:Trade)-[:ON_MARKET]->(m:Market)-[:PART_OF_EVENT]->(e:Event)
+  // Only analyze top 200 most active traders
+  MATCH (u:User)-[:PLACED_TRADE]->(:Trade)
+  WITH u, count(*) as trade_count
+  WHERE trade_count >= 5
+  ORDER BY trade_count DESC
+  LIMIT 200
+  
+  // Get their category transitions
+  MATCH (u)-[:PLACED_TRADE]->(t:Trade)-[:ON_MARKET]->(m:Market)-[:PART_OF_EVENT]->(e:Event)
   WITH u, e.category as category, t.timestamp as timestamp
   ORDER BY u.address, timestamp
   WITH u, collect(DISTINCT category) as categories
@@ -365,6 +406,7 @@ export async function getCategoryFlow() {
   WHERE from_category <> to_category
   RETURN from_category, to_category, count(*) as transitions
   ORDER BY transitions DESC
+  LIMIT 50
   `
 		);
 

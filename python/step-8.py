@@ -15,7 +15,7 @@ def verify_database(driver):
         print('[1/7] Counting Nodes...')
         print('-' * 70)
         
-        node_types = ['Event', 'Market', 'Outcome', 'User', 'Contract', 'Trade']
+        node_types = ['Event', 'Market', 'Outcome', 'User', 'Trade']
         node_counts = {}
         
         for node_type in tqdm(node_types, desc='Node Types'):
